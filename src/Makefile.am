@@ -439,6 +439,7 @@ AM_CPPFLAGS += \
 	$(LIBNL_CFLAGS) \
 	$(LIBNDP_CFLAGS) \
 	$(LIBSOUP_CFLAGS) \
+	$(LIBCURL_CFLAGS) \
 	$(SELINUX_CFLAGS) \
 	$(LIBAUDIT_CFLAGS) \
 	$(SYSTEMD_LOGIN_CFLAGS) \
@@ -484,6 +485,10 @@ libNetworkManager_la_LIBADD = \
 
 if WITH_LIBSOUP
 libNetworkManager_la_LIBADD += $(LIBSOUP_LIBS)
+endif
+
+if WITH_LIBCURL
+libNetworkManager_la_LIBADD += $(LIBCURL_LIBS)
 endif
 
 NetworkManager_LDFLAGS = -rdynamic
