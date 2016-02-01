@@ -17,8 +17,8 @@ AM_CPPFLAGS = \
 	-DNM_VERSION_MAX_ALLOWED=NM_VERSION_NEXT_STABLE \
 	$(GLIB_CFLAGS)
 
-if WITH_TEAMDCTL
-AM_CPPFLAGS += ${LIBTEAMDCTL_CFLAGS}
+if WITH_TEAM
+AM_CPPFLAGS += $(LIBTEAMDCTL_CFLAGS) $(JANSSON_CFLAGS)
 endif
 
 pkglib_LTLIBRARIES = libnm-device-plugin-team.la
@@ -40,8 +40,8 @@ libnm_device_plugin_team_la_LIBADD = \
 	$(GLIB_LIBS) \
 	$(GUDEV_LIBS)
 
-if WITH_TEAMDCTL
-libnm_device_plugin_team_la_LIBADD += $(LIBTEAMDCTL_LIBS)
+if WITH_TEAM
+libnm_device_plugin_team_la_LIBADD += $(LIBTEAMDCTL_LIBS) $(JANSSON_LIBS)
 endif
 
 EXTRA_DIST = $(SYMBOL_VIS_FILE)

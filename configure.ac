@@ -531,20 +531,40 @@ PKG_CHECK_MODULES(LIBNL, libnl-3.0 >= 3.2.8)
 PKG_CHECK_MODULES(UUID, uuid)
 
 # Teamd control checks
-PKG_CHECK_MODULES(LIBTEAMDCTL, [libteamdctl >= 1.9], [have_teamdctl=yes],[have_teamdctl=no])
-AC_ARG_ENABLE(teamdctl, AS_HELP_STRING([--enable-teamdctl], [enable Teamd control support]),
-                     [enable_teamdctl=${enableval}], [enable_teamdctl=${have_teamdctl}])
-if (test "${enable_teamdctl}" = "yes"); then
-	if test x"$have_teamdctl" = x"no"; then
-		AC_MSG_ERROR(Teamd control is required)
+PKG_CHECK_MODULES(LIBTEAMDCTL, [libteamdctl >= 1.9], [have_teamdctl=yes], [have_teamdctl=no])
+PKG_CHECK_MODULES(JANSSON, [jansson], [have_jansson=yes], [have_jansson=no])
+
+if test "$have_teamdctl" = "yes" -a "$have_jansson" = "yes"; then
+       have_team_deps=yes
+else
+       have_team_deps=no
+fi
+
+AC_ARG_ENABLE(teamdctl, AS_HELP_STRING([--enable-teamdctl], [enable Teamd control support. Deprecated option, use --enable-team]))
+AC_ARG_ENABLE(team, AS_HELP_STRING([--enable-team], [enable team devices support]), [enable_team=${enableval}])
+
+if test -z "$enable_team" -a -n "$enable_teamdctl"; then
+	enable_team=${enable_teamdctl}
+fi
+
+if test -z "$enable_team"; then
+	enable_team=${have_team_deps}
+fi
+
+if (test "${enable_team}" = "yes"); then
+	if test x"$have_team" = x"no"; then
+		AC_MSG_ERROR(Teamd control is required for team devices support)
+	fi
+	if test x"$have_jansson" = x"no"; then
+		AC_MSG_ERROR(Jansson is required for team devices support)
 	fi
 	# temporary bug workaround
 	LIBTEAMDCTL_CFLAGS=`echo $LIBTEAMDCTL_CFLAGS | sed -e 's:/teamdctl.h::'`
-	AC_DEFINE(WITH_TEAMDCTL, 1, [Define if you have Teamd control support])
+	AC_DEFINE(WITH_TEAM, 1, [Define if you have team devices support])
 else
-	AC_DEFINE(WITH_TEAMDCTL, 0, [Define if you have Teamd control support])
+	AC_DEFINE(WITH_TEAM, 0, [Define if you have team devices support])
 fi
-AM_CONDITIONAL(WITH_TEAMDCTL, test "${enable_teamdctl}" = "yes")
+AM_CONDITIONAL(WITH_TEAM, test "${enable_team}" = "yes")
 
 # we usually compile with polkit support. --enable-polkit=yes|no only sets the
 # default configuration for main.auth-polkit. User can always enable/disable polkit
@@ -1142,7 +1162,7 @@ echo "  wifi: $enable_wifi"
 echo "  ppp: $enable_ppp"
 echo "  modemmanager-1: $with_modem_manager_1"
 echo "  concheck: $enable_concheck"
-echo "  libteamdctl: $enable_teamdctl"
+echo "  team: $enable_team"
 echo "  libnm-glib: $with_libnm_glib"
 echo "  nmcli: $build_nmcli"
 echo "  nmtui: $build_nmtui"
