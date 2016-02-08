@@ -23,7 +23,11 @@
 
 #include <string.h>
 #if WITH_CONCHECK
+#if WITH_LIBCURL
+#include <curl/curl.h>
+#else
 #include <libsoup/soup.h>
+#endif
 #endif
 
 #include "nm-default.h"
@@ -51,7 +55,12 @@ typedef struct {
 	gboolean online; /* whether periodic connectivity checking is enabled. */
 
 #if WITH_CONCHECK
+#if WITH_LIBCURL
+	CURL *curl_ehandle;
+	CURLM *curl_mhandle;
+#else
 	SoupSession *soup_session;
+#endif
 	gboolean initial_check_obsoleted;
 	guint check_id;
 #endif
@@ -106,8 +115,28 @@ typedef struct {
 	char *uri;
 	char *response;
 	guint check_id_when_scheduled;
+#if WITH_LIBCURL
+	size_t msg_size;
+	char *msg;
+#endif
 } ConCheckCbData;
 
+#if WITH_LIBCURL
+size_t
+easy_write_callback (void *buffer, size_t size, size_t nmemb, void *userp)
+{
+	ConCheckCbData *cb_data = userp;
+	const char *response = cb_data->response ? cb_data->response : NM_CONFIG_DEFAULT_CONNECTIVITY_RESPONSE;
+
+	cb_data->msg = g_realloc (cb_data->msg, cb_data->msg_size + size*nmemb);
+	memcpy (cb_data->msg + cb_data->msg_size, buffer, nmemb*size);
+	cb_data->msg_size += size * nmemb;
+
+	_LOGD ("Received %d bytes from CURL\n", size * nmemb);
+
+	return size * nmemb;
+}
+#else
 static void
 nm_connectivity_check_cb (SoupSession *session, SoupMessage *msg, gpointer user_data)
 {
@@ -157,7 +186,6 @@ nm_connectivity_check_cb (SoupSession *session, SoupMessage *msg, gpointer user_
 			new_state = NM_CONNECTIVITY_PORTAL;
 		}
 	}
-
  done:
 	/* Only update the state, if the call was done from external, or if the periodic check
 	 * is still the one that called this async check. */
@@ -179,6 +207,7 @@ nm_connectivity_check_cb (SoupSession *session, SoupMessage *msg, gpointer user_
 	g_free (cb_data->response);
 	g_slice_free (ConCheckCbData, cb_data);
 }
+#endif
 
 #define IS_PERIODIC_CHECK(callback)  (callback == run_check_complete)
 
@@ -275,6 +304,62 @@ nm_connectivity_check_async (NMConnectivity      *self,
 	                                    nm_connectivity_check_async);
 
 #if WITH_CONCHECK
+#if WITH_LIBCURL
+	if (priv->uri && priv->interval) {
+		CURLcode eretv;
+		CURLMcode mretv;
+
+		NMConnectivityState new_state;
+		ConCheckCbData *cb_data = g_slice_new (ConCheckCbData);
+
+		priv->curl_ehandle = curl_easy_init ();
+		curl_easy_setopt (priv->curl_ehandle, CURLOPT_URL, priv->uri);
+		curl_easy_setopt (priv->curl_ehandle, CURLOPT_WRITEFUNCTION, easy_write_callback);
+		curl_easy_setopt (priv->curl_ehandle, CURLOPT_WRITEDATA, cb_data);
+		/*
+		 * TODO --> disable keepalive
+		 * curl http redirection is disabled by default but not connection presistence
+		 */
+
+		cb_data->simple = simple;
+		cb_data->uri = g_strdup (priv->uri);
+		cb_data->response = g_strdup (priv->response);
+		cb_data->msg_size = 0;
+		cb_data->msg = NULL;
+
+		/* For internal calls (periodic), remember the check-id at time of scheduling. */
+		cb_data->check_id_when_scheduled = IS_PERIODIC_CHECK (callback) ? priv->check_id : 0;
+
+		eretv = curl_easy_perform (priv->curl_ehandle);
+		/*
+		 * TODO --> use the async API
+		 *  curl_multi_add_handle (priv->curl_handle, curl_easyhandle);
+		 */
+
+		if (eretv != CURLE_OK) {
+			_LOGI ("check for uri '%s' failed", priv->uri);
+			new_state = NM_CONNECTIVITY_LIMITED;
+		} else {
+			/*
+			 * TODO --> Check Headers
+			 */
+
+			/* Checking the response */
+			if (cb_data->msg && g_str_has_prefix (cb_data->msg, priv->response)) {
+				_LOGI ("check for uri '%s' succesful.", priv->uri);
+				new_state = NM_CONNECTIVITY_FULL;
+			} else {
+				_LOGI ("check for uri '%s' did not match expected response '%s'; assuming captive portal.",
+					priv->uri, priv->response);
+				new_state = NM_CONNECTIVITY_PORTAL;
+			}
+		}
+		update_state (self, new_state);
+		g_free (cb_data->uri);
+		g_free (cb_data->response);
+		g_free (cb_data->msg);
+		g_slice_free (ConCheckCbData, cb_data);
+#else
 	if (priv->uri && priv->interval) {
 		SoupMessage *msg;
 		ConCheckCbData *cb_data = g_slice_new (ConCheckCbData);
@@ -294,8 +379,8 @@ nm_connectivity_check_async (NMConnectivity      *self,
 		                            msg,
 		                            nm_connectivity_check_cb,
 		                            cb_data);
+#endif
 		priv->initial_check_obsoleted = TRUE;
-
 		_LOGD ("check: send %srequest to '%s'", IS_PERIODIC_CHECK (callback) ? "periodic " : "", priv->uri);
 		return;
 	} else {
@@ -357,6 +442,11 @@ set_property (GObject *object, guint property_id,
 			uri = NULL;
 		changed = g_strcmp0 (uri, priv->uri) != 0;
 #if WITH_CONCHECK
+/*
+ * TODO --> check uri without LIBSOUP
+ */
+#if WITH_LIBCURL
+#else
 		if (uri) {
 			SoupURI *soup_uri = soup_uri_new (uri);
 
@@ -370,6 +460,7 @@ set_property (GObject *object, guint property_id,
 			if (soup_uri)
 				soup_uri_free (soup_uri);
 		}
+#endif
 #endif
 		if (changed) {
 			g_free (priv->uri);
@@ -436,7 +527,20 @@ nm_connectivity_init (NMConnectivity *self)
 	NMConnectivityPrivate *priv = NM_CONNECTIVITY_GET_PRIVATE (self);
 
 #if WITH_CONCHECK
+#if WITH_LIBCURL
+	CURLcode retv;
+	retv = curl_global_init (CURL_GLOBAL_ALL);
+	if (retv != CURLE_OK)
+		_LOGI ("Unable to init CURL, connectivity check will be affected");
+	/*
+	 * TODO: init the multi interface here
+	 * priv->curl_handle = curl_multi_init();
+	 * curl_multi_setopt (curl_handle, CURLMOPT_SOCKETFUNCTION, curl_handle_socket);
+	 * curl_multi_setopt (curl_handle, CURLMOPT_TIMERFUNCTION, curl_start_timeout);
+	 */
+#else
 	priv->soup_session = soup_session_async_new_with_options (SOUP_SESSION_TIMEOUT, 15, NULL);
+#endif
 #endif
 	priv->state = NM_CONNECTIVITY_NONE;
 }
@@ -452,6 +556,13 @@ dispose (GObject *object)
 	g_clear_pointer (&priv->response, g_free);
 
 #if WITH_CONCHECK
+#if WITH_LIBCURL
+	/* mretv = curl_multi_remove_handle (multihandle, easyhandle); */
+	if (priv->curl_ehandle)
+		curl_easy_cleanup (priv->curl_ehandle);
+	/* mretv = curl_multi_cleanup (multihandle); */
+	curl_global_cleanup ();  // not thread safe!!!
+#else
 	if (priv->soup_session) {
 		soup_session_abort (priv->soup_session);
 		g_clear_object (&priv->soup_session);
@@ -459,7 +570,7 @@ dispose (GObject *object)
 
 	nm_clear_g_source (&priv->check_id);
 #endif
-
+#endif
 	G_OBJECT_CLASS (nm_connectivity_parent_class)->dispose (object);
 }
 
