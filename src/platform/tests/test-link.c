@@ -23,6 +23,8 @@
 #include <sched.h>
 
 #include "nmp-object.h"
+#include "nmp-netns.h"
+#include "nm-platform-utils.h"
 
 #include "test-common.h"
 #include "nm-test-utils.h"
@@ -1846,6 +1848,105 @@ again:
 	nmtstp_link_del (-1, ifindex_dummy0, IFACE_DUMMY0);
 }
 
+/******************************************************************/
+
+static void
+test_netns_general_setup (gpointer fixture, gconstpointer test_data)
+{
+	/* the singleton platform instance has netns support disabled.
+	 * Destroy the instance before the test and re-create it afterwards. */
+	g_object_unref (nm_platform_get ());
+}
+
+static void
+test_netns_general_teardown (gpointer fixture, gconstpointer test_data)
+{
+	/* re-create platform instance */
+	SETUP ();
+}
+
+static void
+test_netns_general (gpointer fixture, gconstpointer test_data)
+{
+	gs_unref_object NMPlatform *platform_1 = NULL;
+	gs_unref_object NMPlatform *platform_2 = NULL;
+	gs_unref_object NMPNetns *netns_2 = NULL;
+	NMPNetns *netns_tmp;
+	char sbuf[100];
+	int i, j;
+	gboolean ethtool_support;
+
+	platform_1 = g_object_new (NM_TYPE_LINUX_PLATFORM, NM_PLATFORM_NETNS_SUPPORT, TRUE, NULL);
+
+	netns_2 = nmp_netns_new ();
+	platform_2 = g_object_new (NM_TYPE_LINUX_PLATFORM, NM_PLATFORM_NETNS_SUPPORT, TRUE, NULL);
+	nmp_netns_pop (netns_2);
+
+	g_assert_cmpint (nm_platform_link_dummy_add (platform_1, "dummy1_", NULL), ==, NM_PLATFORM_ERROR_SUCCESS);
+	g_assert_cmpint (nm_platform_link_dummy_add (platform_1, "dummy2a", NULL), ==, NM_PLATFORM_ERROR_SUCCESS);
+	g_assert_cmpint (nm_platform_link_dummy_add (platform_2, "dummy1_", NULL), ==, NM_PLATFORM_ERROR_SUCCESS);
+	g_assert_cmpint (nm_platform_link_dummy_add (platform_2, "dummy2b", NULL), ==, NM_PLATFORM_ERROR_SUCCESS);
+
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_1, "/sys/devices/virtual/net/dummy1_/ifindex"), ==, nm_sprintf_buf (sbuf, "%d", nm_platform_link_get_by_ifname (platform_1, "dummy1_")->ifindex));
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_1, "/sys/devices/virtual/net/dummy2a/ifindex"), ==, nm_sprintf_buf (sbuf, "%d", nm_platform_link_get_by_ifname (platform_1, "dummy2a")->ifindex));
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_1, "/sys/devices/virtual/net/dummy2b/ifindex"), ==, NULL);
+
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_2, "/sys/devices/virtual/net/dummy1_/ifindex"), ==, nm_sprintf_buf (sbuf, "%d", nm_platform_link_get_by_ifname (platform_2, "dummy1_")->ifindex));
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_2, "/sys/devices/virtual/net/dummy2a/ifindex"), ==, NULL);
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_2, "/sys/devices/virtual/net/dummy2b/ifindex"), ==, nm_sprintf_buf (sbuf, "%d", nm_platform_link_get_by_ifname (platform_2, "dummy2b")->ifindex));
+
+	for (i = 0; i < 10; i++) {
+		NMPlatform *pl;
+		const char *path;
+
+		j = nmtst_get_rand_int () % 2;
+
+		if (nmtst_get_rand_int () % 2) {
+			pl = platform_1;
+			if (nmtst_get_rand_int () % 2)
+				path = "/proc/sys/net/ipv6/conf/dummy1_/disable_ipv6";
+			else
+				path = "/proc/sys/net/ipv6/conf/dummy2a/disable_ipv6";
+		} else {
+			pl = platform_2;
+			if (nmtst_get_rand_int () % 2)
+				path = "/proc/sys/net/ipv6/conf/dummy1_/disable_ipv6";
+			else
+				path = "/proc/sys/net/ipv6/conf/dummy2b/disable_ipv6";
+		}
+		g_assert (nm_platform_sysctl_set (pl, path, nm_sprintf_buf (sbuf, "%d", j)));
+		g_assert_cmpstr (nm_platform_sysctl_get (pl, path), ==, nm_sprintf_buf (sbuf, "%d", j));
+	}
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_1, "/proc/sys/net/ipv6/conf/dummy2b/disable_ipv6"), ==, NULL);
+	g_assert_cmpstr (nm_platform_sysctl_get (platform_2, "/proc/sys/net/ipv6/conf/dummy2a/disable_ipv6"), ==, NULL);
+
+	/* older kernels (Ubuntu 12.04) don't support ethtool -i for dummy devices. Work around that and
+	 * skip asserts that are known to fail. */
+	ethtool_support = nmtstp_run_command ("ethtool -i dummy1_ > /dev/null") == 0;
+	if (ethtool_support) {
+		g_assert ( nmp_utils_ethtool_get_driver_info ("dummy1_", NULL, NULL, NULL));
+		g_assert ( nmp_utils_ethtool_get_driver_info ("dummy2a", NULL, NULL, NULL));
+		g_assert (!nmp_utils_ethtool_get_driver_info ("dummy2b", NULL, NULL, NULL));
+		g_assert_cmpint (nmtstp_run_command ("ethtool -i dummy1_ > /dev/null"), ==, 0);
+		g_assert_cmpint (nmtstp_run_command ("ethtool -i dummy2a > /dev/null"), ==, 0);
+		g_assert_cmpint (nmtstp_run_command ("ethtool -i dummy2b 2> /dev/null"), !=, 0);
+	}
+
+	g_assert (nm_platform_netns_push (platform_2, &netns_tmp));
+	g_assert (netns_tmp == netns_2);
+
+	if (ethtool_support) {
+		g_assert ( nmp_utils_ethtool_get_driver_info ("dummy1_", NULL, NULL, NULL));
+		g_assert (!nmp_utils_ethtool_get_driver_info ("dummy2a", NULL, NULL, NULL));
+		g_assert ( nmp_utils_ethtool_get_driver_info ("dummy2b", NULL, NULL, NULL));
+		g_assert_cmpint (nmtstp_run_command ("ethtool -i dummy1_ > /dev/null"), ==, 0);
+		g_assert_cmpint (nmtstp_run_command ("ethtool -i dummy2a 2> /dev/null"), !=, 0);
+		g_assert_cmpint (nmtstp_run_command ("ethtool -i dummy2b > /dev/null"), ==, 0);
+	}
+
+	nmp_netns_pop (netns_tmp);
+}
+
 /*****************************************************************************/
 
 void
@@ -1894,5 +1995,7 @@ setup_tests (void)
 		g_test_add_func ("/link/nl-bugs/veth", test_nl_bugs_veth);
 		g_test_add_func ("/link/nl-bugs/spurious-newlink", test_nl_bugs_spuroius_newlink);
 		g_test_add_func ("/link/nl-bugs/spurious-dellink", test_nl_bugs_spuroius_dellink);
+
+		g_test_add_vtable ("/general/netns/general", 0, NULL, test_netns_general_setup, test_netns_general, test_netns_general_teardown);
 	}
 }

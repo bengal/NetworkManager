@@ -1856,7 +1856,7 @@ nmp_cache_update_link_master_connected (NMPCache *cache, int ifindex, NMPObject 
 /******************************************************************/
 
 NMPCache *
-nmp_cache_new ()
+nmp_cache_new (gboolean use_udev)
 {
 	NMPCache *cache = g_new (NMPCache, 1);
 
@@ -1868,7 +1868,7 @@ nmp_cache_new ()
 	                                       (NMMultiIndexFuncEqual) nmp_cache_id_equal,
 	                                       (NMMultiIndexFuncClone) nmp_cache_id_clone,
 	                                       (NMMultiIndexFuncDestroy) nmp_cache_id_destroy);
-	cache->use_udev = nmp_cache_use_udev_detect ();
+	cache->use_udev = !!use_udev;
 	return cache;
 }
 

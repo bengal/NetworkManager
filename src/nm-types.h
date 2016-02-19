@@ -82,6 +82,9 @@ typedef struct _NMPlatformLink       NMPlatformLink;
 
 typedef struct _NMPObject            NMPObject;
 
+typedef struct _NMPNetns             NMPNetns;
+typedef struct _NMPNetnsManager      NMPNetnsManager;
+
 typedef enum {
 	/* Please don't interpret type numbers outside nm-platform and use functions
 	 * like nm_platform_link_is_software() and nm_platform_supports_slaves().

@@ -411,7 +411,7 @@ NMPCacheOpsType nmp_cache_update_netlink (NMPCache *cache, NMPObject *obj, NMPOb
 NMPCacheOpsType nmp_cache_update_link_udev (NMPCache *cache, int ifindex, GUdevDevice *udev_device, NMPObject **out_obj, gboolean *out_was_visible, NMPCachePreHook pre_hook, gpointer user_data);
 NMPCacheOpsType nmp_cache_update_link_master_connected (NMPCache *cache, int ifindex, NMPObject **out_obj, gboolean *out_was_visible, NMPCachePreHook pre_hook, gpointer user_data);
 
-NMPCache *nmp_cache_new (void);
+NMPCache *nmp_cache_new (gboolean use_udev);
 void nmp_cache_free (NMPCache *cache);
 
 #endif /* __NMP_OBJECT_H__ */
