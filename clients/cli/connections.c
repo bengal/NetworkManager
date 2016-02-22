@@ -5595,7 +5595,8 @@ cleanup_bond:
 		}
 
 		/* Set team options */
-		g_object_set (s_team, NM_SETTING_TEAM_CONFIG, json, NULL);
+		if (json)
+			g_object_set (s_team, NM_SETTING_TEAM_CONFIG, json, NULL);
 
 		success = TRUE;
 cleanup_team:

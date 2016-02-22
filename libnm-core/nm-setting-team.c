@@ -165,7 +165,8 @@ nm_setting_team_class_init (NMSettingTeamClass *setting_class)
 	g_object_class_install_property
 		(object_class, PROP_CONFIG,
 		 g_param_spec_string (NM_SETTING_TEAM_CONFIG, "", "",
-		                      NULL,
+		                      "{ \"runner\": { \"name\": \"roundrobin\" }}",
+		                      G_PARAM_CONSTRUCT |
 		                      G_PARAM_READWRITE |
 		                      G_PARAM_STATIC_STRINGS));
 
