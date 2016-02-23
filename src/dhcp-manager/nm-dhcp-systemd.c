@@ -58,14 +58,19 @@ typedef struct {
 #define _NMLOG_PREFIX_NAME      "dhcp"
 #define _NMLOG(level, domain, ...) \
     G_STMT_START { \
-        const char *__ifname = nm_dhcp_client_get_iface (NM_DHCP_CLIENT (self)); \
+        const NMLogLevel _level = (level); \
+        const NMLogDomain _domain = (domain); \
         \
-        nm_log ((level), (domain), \
-                "%s%s %s%s%s: " _NM_UTILS_MACRO_FIRST (__VA_ARGS__), \
-                _NMLOG_PREFIX_NAME, \
-                ((domain) == LOGD_DHCP4 ? "4" : ((domain) == LOGD_DHCP6 ? "6" : "")), \
-                 NM_PRINT_FMT_QUOTED (__ifname, "(", __ifname, ")", "") \
-                _NM_UTILS_MACRO_REST (__VA_ARGS__)); \
+        if (nm_logging_enabled (_level, _domain)) { \
+            const char *__ifname = self ? nm_dhcp_client_get_iface ((NMDhcpClient *) self) : NULL; \
+            \
+            _nm_log (_level, _domain, 0, \
+                    "%s%s%s%s%s: " _NM_UTILS_MACRO_FIRST (__VA_ARGS__), \
+                    _NMLOG_PREFIX_NAME, \
+                    (_domain == LOGD_DHCP4 ? "4" : (_domain == LOGD_DHCP6 ? "6" : "")), \
+                    NM_PRINT_FMT_QUOTED (__ifname, "[", __ifname, "]", "") \
+                    _NM_UTILS_MACRO_REST (__VA_ARGS__)); \
+        } \
     } G_STMT_END
 
 /************************************************************/
