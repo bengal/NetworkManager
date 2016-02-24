@@ -4680,7 +4680,7 @@ read_connection_properties (NMConnection *connection,
 		}
 
 		setting_name = check_valid_name (strv[0], get_valid_settings_array (con_type),
-						 get_valid_settings_array (slv_type), &local);
+		                                 get_valid_settings_array (slv_type), &local);
 		if (!setting_name) {
 			g_set_error (error, NMCLI_ERROR, NMC_RESULT_ERROR_USER_INPUT,
 			             _("Error: invalid or not allowed setting '%s': %s."),
