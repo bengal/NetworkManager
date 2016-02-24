@@ -752,8 +752,11 @@ nm_logging_syslog_openlog (const char *logging_backend)
 	if (strcmp (logging_backend, "debug") == 0) {
 		global.log_backend = LOG_BACKEND_SYSLOG;
 		openlog (G_LOG_DOMAIN, LOG_CONS | LOG_PERROR | LOG_PID, LOG_USER);
+		log_format_flags = _LOG_FORMAT_FLAG_SYSLOG;
 #if SYSTEMD_JOURNAL
 	} else if (strcmp (logging_backend, "syslog") != 0) {
+		if (strcmp (logging_backend, "journal-syslog-style") == 0)
+			log_format_flags = _LOG_FORMAT_FLAG_SYSLOG;
 		global.log_backend = LOG_BACKEND_JOURNAL;
 
 		/* ensure we read a monotonic timestamp. Reading the timestamp the first
@@ -762,6 +765,7 @@ nm_logging_syslog_openlog (const char *logging_backend)
 #endif
 	} else {
 		global.log_backend = LOG_BACKEND_SYSLOG;
+		log_format_flags = _LOG_FORMAT_FLAG_SYSLOG;
 		openlog (G_LOG_DOMAIN, LOG_PID, LOG_DAEMON);
 	}
 
