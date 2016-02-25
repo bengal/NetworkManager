@@ -2889,6 +2889,21 @@ get_valid_options_string (const NameItem array[])
 	return g_string_free (str, FALSE);
 }
 
+static const NameItem *
+get_valid_settings_array (const char *con_type)
+{
+	guint i, num;
+
+	if (!con_type)
+		return NULL;
+
+	num = G_N_ELEMENTS (nmc_valid_connection_types);
+	for (i = 0; i < num; i++)
+		if (nm_streq0 (con_type, nmc_valid_connection_types[i].name))
+			return nmc_valid_connection_types[i].settings;
+	return NULL;
+}
+
 /*
  * Check if 'val' is valid string in either array->name or array->alias for
  * both array parameters (array & array_slv).
@@ -2899,23 +2914,29 @@ get_valid_options_string (const NameItem array[])
  * The returned string must not be freed.
  */
 static const char *
-check_valid_name (const char *val, const NameItem array[], const NameItem array_slv[], GError **error)
+check_valid_name (const char *val, const NameItem *array, const NameItem *array_slv, GError **error)
 {
 	const NameItem *iter;
-	GPtrArray *tmp_arr;
+	gs_unref_ptrarray GPtrArray *tmp_arr = NULL;
 	const char *str;
 	GError *tmp_err = NULL;
 
+	g_return_val_if_fail (val, NULL);
+	g_return_val_if_fail (array, NULL);
+
+	if (!array_slv)
+		array_slv = get_valid_settings_array ("no-slave");
+
 	/* Create a temporary array that can be used in nmc_string_is_valid() */
-	tmp_arr = g_ptr_array_sized_new (30);
-	iter = &array[0];
+	tmp_arr = g_ptr_array_sized_new (32);
+	iter = array;
 	while (iter && iter->name) {
 		g_ptr_array_add (tmp_arr, (gpointer) iter->name);
 		if (iter->alias)
 			g_ptr_array_add (tmp_arr, (gpointer) iter->alias);
 		iter++;
 	}
-	iter = &array_slv[0];
+	iter = array_slv;
 	while (iter && iter->name) {
 		g_ptr_array_add (tmp_arr, (gpointer) iter->name);
 		if (iter->alias)
@@ -2933,54 +2954,36 @@ check_valid_name (const char *val, const NameItem array[], const NameItem array_
 			/* We want to handle aliases, so construct own error message */
 			char *err_str = get_valid_options_string (array);
 			char *err_slv = get_valid_options_string (array_slv);
+
 			g_set_error (error, 1, 0, _("'%s' not among [%s, %s]"),
-			             val ? val : "", err_str, err_slv);
+			             val, err_str, err_slv);
 			g_free (err_str);
+			g_free (err_slv);
 			g_clear_error (&tmp_err);
 		}
-		g_ptr_array_free (tmp_arr, TRUE);
 		return NULL;
 	}
 
 	/* Return a pointer to the found string in passed 'array' */
-	iter = &array[0];
+	iter = array;
 	while (iter && iter->name) {
-		if (   (iter->name && g_strcmp0 (iter->name, str) == 0)
-		    || (iter->alias && g_strcmp0 (iter->alias, str) == 0)) {
-			g_ptr_array_free (tmp_arr, TRUE);
+		if (   nm_streq (iter->name, str)
+		    || nm_streq0 (iter->alias, str)) {
 			return iter->name;
 		}
 		iter++;
 	}
-	iter = &array_slv[0];
+	iter = array_slv;
 	while (iter && iter->name) {
-		if (   (iter->name && g_strcmp0 (iter->name, str) == 0)
-		    || (iter->alias && g_strcmp0 (iter->alias, str) == 0)) {
-			g_ptr_array_free (tmp_arr, TRUE);
+		if (   nm_streq (iter->name, str)
+		    || nm_streq0 (iter->alias, str)) {
 			return iter->name;
 		}
 		iter++;
 	}
 
 	/* We should not really come here */
-	g_ptr_array_free (tmp_arr, TRUE);
 	g_set_error (error, 1, 0, _("Unknown error"));
-	return NULL;
-}
-
-static const NameItem *
-get_valid_settings_array (const char *con_type)
-{
-	guint i, num;
-
-	if (!con_type)
-		return NULL;
-
-	num = G_N_ELEMENTS (nmc_valid_connection_types);
-        for (i = 0; i < num; i++) {
-		if (!g_strcmp0 (con_type, nmc_valid_connection_types[i].name))
-			return nmc_valid_connection_types[i].settings;
-	}
 	return NULL;
 }
 
