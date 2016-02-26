@@ -1280,7 +1280,7 @@ set_default_for_missing_key (NMSetting *setting, const char *property)
 
 	if (NM_IS_SETTING_VLAN (setting)) {
 		if (!strcmp (property, NM_SETTING_VLAN_FLAGS))
-			g_object_set (setting, property, (NMVlanFlags) 0, NULL);
+			g_object_set (setting, property, (NMVlanFlags) NM_VLAN_FLAG_REORDER_HEADERS, NULL);
 	} else if (NM_IS_SETTING_WIRELESS (setting)) {
 		if (!strcmp (property, NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION))
 			g_object_set (setting, property, (NMSettingMacRandomization) NM_SETTING_MAC_RANDOMIZATION_NEVER, NULL);
@@ -1689,14 +1689,14 @@ nm_keyfile_read (GKeyFile *keyfile,
 		}
 	}
 
-	/* Make sure that if [vlan] group was missing we set vlan.flags to 0
+	/* Make sure that if [vlan] group was missing we set vlan.flags to REORDER_HDR
 	 * for backwards compatibility */
 	if (nm_connection_is_type (connection, NM_SETTING_VLAN_SETTING_NAME)) {
 		if (!nm_connection_get_setting_vlan (connection)) {
 			NMSettingVlan *s_vlan;
 
 			s_vlan = NM_SETTING_VLAN (nm_setting_vlan_new ());
-			g_object_set (s_vlan, NM_SETTING_VLAN_FLAGS, 0, NULL);
+			g_object_set (s_vlan, NM_SETTING_VLAN_FLAGS, NM_VLAN_FLAG_REORDER_HEADERS, NULL);
 			nm_connection_add_setting (connection, NM_SETTING (s_vlan));
 		}
 	}
