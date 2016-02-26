@@ -1260,6 +1260,7 @@ write_vlan_setting (NMConnection *connection, shvarFile *ifcfg, gboolean *wired,
 	NMSettingConnection *s_con;
 	char *tmp;
 	guint32 vlan_flags = 0;
+	GString *str;
 
 	s_con = nm_connection_get_setting_connection (connection);
 	if (!s_con) {
@@ -1292,9 +1293,15 @@ write_vlan_setting (NMConnection *connection, shvarFile *ifcfg, gboolean *wired,
 
 	svSetValue (ifcfg, "GVRP", vlan_flags & NM_VLAN_FLAG_GVRP ? "yes" : "no", FALSE);
 
-	svSetValue (ifcfg, "VLAN_FLAGS", NULL, FALSE);
-	if (vlan_flags & NM_VLAN_FLAG_LOOSE_BINDING)
-		svSetValue (ifcfg, "VLAN_FLAGS", "LOOSE_BINDING", FALSE);
+	str = g_string_sized_new (32);
+
+	if (NM_FLAGS_HAS (vlan_flags, NM_VLAN_FLAG_LOOSE_BINDING))
+		g_string_append (str, "LOOSE_BINDING");
+	if (!NM_FLAGS_HAS (vlan_flags, NM_VLAN_FLAG_REORDER_HEADERS))
+		g_string_append_printf (str, "%sNO_REORDER_HDR", str->len ? "," : "");
+
+	svSetValue (ifcfg, "VLAN_FLAGS", str->str, FALSE);
+	g_string_free (str, TRUE);
 
 	svSetValue (ifcfg, "MVRP", vlan_flags & NM_VLAN_FLAG_MVRP ? "yes" : "no", FALSE);
 
