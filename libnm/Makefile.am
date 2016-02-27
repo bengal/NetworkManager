@@ -133,6 +133,7 @@ GLIB_MKENUMS_H_FLAGS = --identifier-prefix NM --fhead '\#include <nm-core-enum-t
 GLIB_MKENUMS_C_FLAGS = --identifier-prefix NM
 
 libnm_la_LIBADD = \
+	-lasan \
 	$(top_builddir)/libnm-core/libnm-core.la \
 	$(top_builddir)/introspection/libnmdbus.la \
 	$(GLIB_LIBS) \
@@ -209,6 +210,7 @@ nm-setting-docs-overrides.xml: generate-plugin-docs.pl $(docs_sources)
 	$(srcdir)/generate-plugin-docs.pl dbus $(top_srcdir)/libnm-core $@
 
 nm-property-docs.xml: generate-setting-docs.py $(docs_sources) | NM-1.0.gir NM-1.0.typelib libnm.la
+	export LD_PRELOAD=/lib64/libasan.so.0; \
 	export GI_TYPELIB_PATH=$(abs_builddir)$${GI_TYPELIB_PATH:+:$$GI_TYPELIB_PATH}; \
 	export LD_LIBRARY_PATH=$(abs_builddir)/.libs$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}; \
 	$(srcdir)/generate-setting-docs.py \
@@ -216,6 +218,7 @@ nm-property-docs.xml: generate-setting-docs.py $(docs_sources) | NM-1.0.gir NM-1
 		--output $@
 
 nm-setting-docs.xml: generate-setting-docs.py $(docs_sources) nm-setting-docs-overrides.xml | NM-1.0.gir NM-1.0.typelib libnm.la
+	export LD_PRELOAD=/lib64/libasan.so.0; \
 	export GI_TYPELIB_PATH=$(abs_builddir)$${GI_TYPELIB_PATH:+:$$GI_TYPELIB_PATH}; \
 	export LD_LIBRARY_PATH=$(abs_builddir)/.libs$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}; \
 	$(srcdir)/generate-setting-docs.py \

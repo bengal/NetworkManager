@@ -458,13 +458,6 @@ cp ORIG-docs/libnm-glib/html/* %{buildroot}%{_datadir}/gtk-doc/html/libnm-glib/
 cp ORIG-docs/libnm-util/html/* %{buildroot}%{_datadir}/gtk-doc/html/libnm-util/
 %endif
 
-
-%check
-%if %{with test}
-make check
-%endif
-
-
 %post
 /usr/bin/udevadm control --reload-rules || :
 /usr/bin/udevadm trigger --subsystem-match=net || :

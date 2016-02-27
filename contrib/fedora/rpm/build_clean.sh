@@ -96,6 +96,11 @@ if [[ $IGNORE_DIRTY != 1 ]]; then
     fi
 fi
 
+export CFLAGS="-ggdb -fno-omit-frame-pointer -DVALGRIND=1 -fsanitize=address"
+export CPPFLAGS="-DVALGRIND=1"
+export LDFLAGS="-fsanitize=address"
+export ASAN_OPTIONS="detect_leaks=0"
+
 if [[ $NO_DIST != 1 ]]; then
     ./autogen.sh --enable-gtk-doc || die "Error autogen.sh"
 
@@ -109,7 +114,7 @@ if [[ $NO_DIST != 1 ]]; then
         make dist || die "Error make distcheck"
     else
         make -j 10 || die "Error make"
-        make distcheck || die "Error make distcheck"
+        make dist || die "Error make dist"
     fi
 fi
 
