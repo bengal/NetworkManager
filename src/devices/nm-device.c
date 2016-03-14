@@ -327,6 +327,7 @@ typedef struct _NMDevicePrivate {
 	GSList *       vpn6_configs;   /* VPNs which use this device */
 	gboolean       nm_ipv6ll; /* TRUE if NM handles the device's IPv6LL address */
 	guint32        ip6_mtu;
+	guint          dad6_timer_id;
 
 	NMRDisc *      rdisc;
 	gulong         rdisc_changed_id;
@@ -6818,6 +6819,15 @@ nm_device_activate_ip4_state_in_wait (NMDevice *self)
 	return NM_DEVICE_GET_PRIVATE (self)->ip4_state == IP_WAIT;
 }
 
+static gboolean
+dad6_timeout (NMDevice *self)
+{
+	_LOGW (LOGD_DEVICE | LOGD_IP6, "Activation: Stage 5 of 5 (IPv6 Commit) failed");
+	nm_device_state_changed (self, NM_DEVICE_STATE_FAILED, NM_DEVICE_STATE_REASON_UNKNOWN);
+
+	return G_SOURCE_REMOVE;
+}
+
 static void
 activate_stage5_ip6_config_commit (NMDevice *self)
 {
@@ -6859,13 +6869,11 @@ activate_stage5_ip6_config_commit (NMDevice *self)
 				return;
 			}
 		}
-
 		nm_device_remove_pending_action (self, PENDING_ACTION_DHCP6, FALSE);
 		nm_device_remove_pending_action (self, PENDING_ACTION_AUTOCONF6, FALSE);
 
-		/* Enter the IP_CHECK state if this is the first method to complete */
-		priv->ip6_state = IP_DONE;
-		check_ip_done (self);
+		_LOGE (LOGD_DEVICE | LOGD_IP6, "wait for IPv6 DAD termination");
+		priv->dad6_timer_id  = g_timeout_add_seconds (20, (GSourceFunc) dad6_timeout, self);
 	} else {
 		_LOGW (LOGD_DEVICE | LOGD_IP6, "Activation: Stage 5 of 5 (IPv6 Commit) failed");
 		nm_device_state_changed (self, NM_DEVICE_STATE_FAILED, reason);
@@ -7061,6 +7069,7 @@ _cleanup_ip6_pre (NMDevice *self, CleanupType cleanup_type)
 
 	priv->ip6_state = IP_NONE;
 	queued_ip6_config_change_clear (self);
+	nm_clear_g_source (&priv->dad6_timer_id);
 
 	dhcp6_cleanup (self, cleanup_type, FALSE);
 	linklocal6_cleanup (self);
@@ -8884,6 +8893,26 @@ queued_ip6_config_change (gpointer user_data)
 	priv->queued_ip6_config_id = 0;
 	g_object_ref (self);
 	update_ip6_config (self, FALSE);
+
+	/* If waiting for DAD termination, check the presence of tentative addresses */
+	if (priv->dad6_timer_id && priv->ext_ip6_config_captured) {
+		guint i, num = nm_ip6_config_get_num_addresses (priv->ext_ip6_config_captured);
+		gboolean tentative = FALSE;
+		const NMPlatformIP6Address *addr;
+
+		for (i = 0; i < num; i++) {
+			addr = nm_ip6_config_get_address (priv->ext_ip6_config_captured, i);
+			tentative |= addr->n_ifa_flags & IFA_F_TENTATIVE;
+		}
+
+		/* We can now proceed with activation */
+		if (!tentative) {
+			_LOGE (LOGD_DEVICE, "IPv6 DAD terminated");
+			nm_clear_g_source (&priv->dad6_timer_id);
+			priv->ip6_state = IP_DONE;
+			check_ip_done (self);
+		}
+	}
 
 	if (   nm_platform_link_get (NM_PLATFORM_GET, priv->ifindex)
 	    && priv->state < NM_DEVICE_STATE_DEACTIVATING) {
